@@ -1,0 +1,270 @@
+﻿<HTA:APPLICATION
+INNERBORDER="no"
+/>
+
+<head>
+<style id="css">
+    .view {width:33%; float:left;}
+    .btn {cursor: hand;}
+    .CT1 {color: red;}
+    .CT2 {color: blue;}
+    .CT3 {color: green;}
+    #InRootFolderPath, #InSubFolderPath {border: solid 1px; width: 100%;}
+    #parent {border: solid 1px red;}
+    #current {border: solid 1px green;}
+    #children {border: solid 1px blue;}
+</style>
+
+<script id="pub" type="text/javascript">
+/*
+$: Review c headers' relationship
+@: YX Hao
+*/
+var FilesA; //[[file],[matches[]],[color_idx]];
+var SubFolders;
+/* common */
+function ID(id){
+	return document.getElementById(id);
+}
+</script>
+
+<script id="runtime" type="text/javascript">
+//
+function EncodeSpecialChars(fn){
+    fn = fn.replace("<", "&lt;");
+    fn = fn.replace(">", "&gt;");
+    return fn;
+}
+//
+function ShowRelationship(O){
+    var idx = parseInt(O.value);
+    if (isNaN(idx)) return 0;
+    ID('children').innerHTML = "";
+    GenChildrenView(idx);
+    //
+    ID('parent').innerHTML = "";
+    GenParentView(idx, true);
+    O.blur(); //UpdateNcolor(O);
+}
+//
+function GenChildrenView(idx){
+    var C = FilesA[1][idx];
+    if (C == null) return 0;
+    GenFileListView(ID('children'), C);
+}
+function GenFileListView(E, A){
+    for (var i = 0; i < A.length; i++)
+        AppendFileListView(E, A[i]);
+}
+function AppendFileListView(E, S){
+    E.innerHTML += '<div class="btn" onclick="FindFileListView(this)">'+ EncodeSpecialChars(S) +'</div>';
+}
+//
+function FindFileListView(O){
+    var S = O.innerText;
+    var sfs = SubFolders.replace(/[\r\n]+/,"\n").split('\n').join("|").replace(/\|$/,"");
+    for (var i = 0; i < FilesA[0].length; i++){
+        var rs = FilesA[0][i];
+        rs = rs.replace(new RegExp( "("+ sfs +")\\\\", "i"),"");
+        rs = '<'+ rs +'>|"'+ rs +'"';
+        if (new RegExp(rs, "i").test(S) || new RegExp(rs.replace("\\","/"), "i").test(S)){
+            ChangeCurView(i);
+            FilesA[2][i] |= 2; /* Has parent */
+            break;
+        }
+    }
+}
+//
+function ChangeCurView(idx){
+    ID('current').value = idx;
+    ShowRelationship(ID('current').options[idx+1]);
+}
+//
+function GenParentView(idx, show){
+    var sfs = SubFolders.replace(/[\r\n]+/,"\n").split('\n').join("|").replace(/\|$/,"");
+    var rs = FilesA[0][idx];
+    rs = rs.replace(new RegExp( "("+ sfs +")\\\\", "i" ),"");
+    rs = '<'+ rs +'>|"'+ rs +'"';
+    for (var i = 0; i < FilesA[0].length; i++){
+        var C = FilesA[1][i];
+        if (C)
+            for (var j = 0; j < C.length; j++){
+                if (new RegExp(rs, "i").test(C[j]) || new RegExp(rs.replace("\\","/"), "i").test(C[j])){
+                    FilesA[2][idx] |= 2; /* Has parent */
+                    if (show) AppendParentView(ID('parent'), i, FilesA);
+                }
+            }
+    }
+}
+function AppendParentView(E, id, A){
+    E.innerHTML += '<div class="btn CT'+ A[2][id] +'" id='+ id +' onclick="SelectCurView(this)">'+ EncodeSpecialChars(A[0][id]) +'</div>';
+}
+//
+function SelectCurView(O){
+    var idx = parseInt(O.id);
+    ChangeCurView(idx);
+}
+</script>
+
+<script id="gen" type="text/javascript">
+var fso = new ActiveXObject("Scripting.FileSystemObject");
+var Folder, FolderStr;
+//
+var fileprefix='HeaderRelationship';
+var filesaved='';
+//
+function submitV(Fun){
+  if(event.keyCode==13)Fun(event.srcElement);
+}
+//
+function ParseFdrP(S){
+    S = S.replace(/(^\s*)|(\s*$)/g, "");
+    return S.replace(/\\*$/g, "") +"\\";
+}
+function STG(s){document.title=s}
+//
+function UpdateNcolor(O){
+    for (var i = 0; i < FilesA[0].length; i++)
+        switch (FilesA[2][i] & 3){
+        case 1:
+            ID('current').options(i+1).style.color = "red";
+            break;
+        case 2:
+            ID('current').options(i+1).style.color = "blue";
+            break;
+        case 3:
+            ID('current').options(i+1).style.color = "green";
+            break;
+        default:
+            ID('current').options(i+1).style.color = "";
+            break;
+        }
+    O.blur();
+    return 0;
+}
+/**/
+function GenOptions(E, A){
+    STG("Generating Nodes");
+    var o = document.createElement("OPTION");
+    E.options.add(o); o.innerText = "Entry File";
+    for (var i = 0; i < A.length; i++){
+        o = document.createElement("OPTION");
+        E.options.add(o);
+        o.value = i; o.innerText = A[i];
+    }
+    STG("");
+}
+function AnyliseParents(){
+    STG("Scanning Parents");
+    for (var i = 0; i < FilesA[0].length; i++)
+        GenParentView(i, false);
+    ID('parent').innerHTML = "";
+    STG("");
+}
+function GetFolderPath(E){
+    FolderStr = ParseFdrP(E.value);
+    SubFolders = ID('InSubFolderPath').value;
+    if (FolderStr != "\\") {
+        try {
+            Folder = fso.GetFolder(FolderStr); 
+        } catch(e) {
+            Folder = null;
+            ID('InRootFolderPath').title = "Invalid Path："+ FolderStr;
+        } finally {
+            ID('parent').innerHTML = "";
+            ID('current').innerHTML = "";
+            ID('children').innerHTML = "";
+        }
+        if (Folder){
+            ID('InRootFolderPath').value = FolderStr;
+            ID('InRootFolderPath').title = "RootDir："+ FolderStr;
+            FilesA = [[],[],[]];
+            GetAllFilesR(Folder);
+            FilesA[0].sort();
+            GetAllChildren();
+            GenOptions(ID('current'), FilesA[0]);
+            //
+            AnyliseParents(); UpdateNcolor(ID('current'));
+            //
+            ID('InRootFolderPath').title += '\n'+ FilesA[0].length;
+            ID('save').disabled = 0;
+        }
+    }
+}
+//
+function GetAllFilesR(F){
+    var FFA, E, fs, ma;
+    FFA = new Enumerator( F.files );
+    for (; !FFA.atEnd(); FFA.moveNext()){
+        E = FFA.item().Path;
+        FilesA[0].push( E );
+    }
+    FFA = new Enumerator(F.SubFolders);
+    for (; !FFA.atEnd(); FFA.moveNext())  GetAllFilesR(FFA.item());
+}
+function GetAllChildren(){
+    var fs, ma;
+    STG("Scanning Children");
+    for (var i = 0; i < FilesA[0].length; i++){
+        fs = fso.OpenTextFile(FilesA[0][i], 1);
+        ma = fs.ReadAll();
+        ma = ma.match(/^[ \t]*#[ \t]*include[ \t]+(<[\w\.\\\/]+>|"[\w\.\\\/]+")/igm);
+        fs.Close();
+        FilesA[1][i] = ma;
+        FilesA[2][i] = 0;
+        if (ma) FilesA[2][i] |= 1; /* Has child */
+        FilesA[0][i] = FilesA[0][i].replace(FolderStr,"");
+    }
+    STG("");
+}
+
+//Save result to file
+function FilesA2Array() {
+    var array_out=[];
+    array_out.push('["'+FilesA[0].join('","')+'"]');
+    //
+    var ma='', ma_out=[];
+    for(var i=0; i < FilesA[1].length; i++){
+        if (FilesA[1][i]){
+            ma_out.push("['"+FilesA[1][i].join("','")+"']"); //could have "
+        }
+        else{ma_out.push("");}
+    }
+    array_out.push("["+ma_out.join(",")+"]");
+    //
+    array_out.push("["+FilesA[2].join(',')+"]");
+    //
+    return ("["+array_out.join(',')+"]").replace(/\\/g, '\\\\');
+}
+function save2file() {
+    var html_out='<!--This is created automatically.-->';
+    html_out += ID('css').outerHTML;
+    html_out += ID('pub').outerHTML;
+    html_out += ID('runtime').outerHTML;
+    html_out += '<div title="Root Dir">'+ FolderStr +'</div>';
+    html_out += ID('InSubFolderPath').outerHTML;
+    html_out += ID('parent').outerHTML;
+    html_out += ID('current').outerHTML;
+    html_out += ID('children').outerHTML;
+    //
+    html_out += '<script id="data" type="text/javascript">';
+    html_out += 'FilesA = '+ FilesA2Array() +';\n';
+    html_out += 'SubFolders = "'+ SubFolders.replace(/\n/g, '\\n') +'";\n';
+    html_out += '<\/script>';
+    //
+    filesaved = fileprefix +'-'+ new Date().getTime() +'.html';
+    var file = fso.CreateTextFile(filesaved);
+    file.Write(html_out);
+    file.Close();
+}
+</script>
+</head>
+
+<input id="InRootFolderPath" title="Root Dir. Press Enter to Run." onkeypress="submitV(GetFolderPath)">
+<textarea id="InSubFolderPath" title="Sub Dirs">
+winapi</textarea>
+<br>
+<button DISABLED id="save" onclick="save2file();this.title=filesaved;this.disabled=1">Save</button><br>
+<div class="view" id="parent" title="parent"></div>
+<SELECT class="view" id="current" title="current" onchange="ShowRelationship(this)"></SELECT>
+<div class="view" id="children" title="children"></div>
